@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>iPhone Messages - iMessage UI</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none; /* Prevent unwanted text selection during long press */
+        }
+
+        input, textarea {
+            user-select: text;
+        }
+
+        /* Custom Scrollbar for smooth iOS feel */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.45);
+            border-radius: 10px;
+        }
+
+        /* iPhone Frame & Screen Transitions */
+        .screen-container {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .view-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.35s cubic-bezier(0.28, 0.84, 0.42, 1);
+            background-color: #ffffff;
+        }
+
+        .view-inbox {
+            transform: translateX(0);
+            z-index: 10;
+        }
+
+        .view-inbox.slide-out {
+            transform: translateX(-30%);
+            filter: brightness(0.92);
+        }
+
+        .view-chat {
+            transform: translateX(100%);
+            z-index: 20;
+            box-shadow: -5px 0 25px rgba(0,0,0,0.12);
+        }
+
+        .view-chat.slide-in {
+            transform: translateX(0);
+        }
+
+        /* iMessage Tail Styling */
+        .bubble-sent {
+            background: linear-gradient(180deg, #2596ff 0%, #007AFF 100%);
+            color: white;
+            border-radius: 22px 22px 4px 22px;
+            position: relative;
+        }
+
+        .bubble-received {
+            background-color: #E9E9EB;
+            color: #000000;
+            border-radius: 22px 22px 22px 4px;
+            position: relative;
+        }
+
+        /* Long Press Active Animation */
+        .bubble-pressing {
+            transform: scale(0.96);
+            transition: transform 0.18s ease;
+        }
+
+        .bubble-highlighted {
+            transform: scale(1.03);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+            z-index: 60 !important;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* Context Menu Pop Animation */
+        @keyframes popMenu {
+            0% {
+                opacity: 0;
+                transform: scale(0.85);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .context-menu-animate {
+            animation: popMenu 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Glassmorphism Header & Footer */
+        .ios-blur {
+            background: rgba(249, 249, 249, 0.90);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+        }
+
+        /* iOS Swipe-Left to Reveal Individual Message Time */
+        .msg-row-wrapper {
+            position: relative;
+            width: 100%;
+            overflow: visible;
+        }
+
+        .msg-slide-track {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            will-change: transform;
+        }
+
+        .msg-slide-spring {
+            transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .msg-side-time {
+            position: absolute;
+            right: -76px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 68px;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 500;
+            color: #8E8E93;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="bg-slate-200 min-h-screen flex items-center justify-center p-0 sm:p-4">
+
+    <!-- Main iPhone Outer Chassis (Full screen on mobile, iPhone frame on desktop) -->
+    <div class="w-full h-[100dvh] sm:w-[420px] sm:h-[850px] bg-black sm:rounded-[54px] sm:p-[12px] sm:shadow-2xl relative flex flex-col overflow-hidden border-0 sm:border-[3px] sm:border-gray-800">
+        
+        <!-- Inner Screen (No Top Status Bar: No Time, Battery, Wi-Fi, or Signal icons) -->
+        <div class="w-full h-full bg-white sm:rounded-[42px] overflow-hidden flex flex-col relative">
+            
+            <!-- Screen Container (Holds Inbox View & Chat View) -->
+            <div class="screen-container flex-1 w-full relative">
+                
+                <!-- ==================== 1. INBOX / MESSAGES LIST VIEW ==================== -->
+                <div id="view-inbox" class="view-panel view-inbox flex flex-col">
+                    <!-- Top Bar -->
+                    <div class="px-4 pt-4 pb-3 ios-blur border-b border-gray-200/80 z-10">
+                        <div class="flex items-center justify-between mb-1">
+                            <button onclick="openResetModal()" class="text-[#007AFF] text-[17px] font-medium active:opacity-50">
+                                Reset
+                            </button>
+                            <button onclick="openNewChatModal()" class="text-[#007AFF] p-1 active:opacity-50" title="New Message">
+                                <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <h1 class="text-[36px] font-bold tracking-tight text-black leading-tight">Messages</h1>
+                        
+                        <!-- Search Bar -->
+                        <div class="mt-2.5 relative">
+                            <div class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-400">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+                                </svg>
+                            </div>
+                            <input type="text" id="search-input" oninput="renderInbox()" placeholder="Search" 
+                                class="w-full bg-[#767680]/15 text-black placeholder-gray-500 text-[17px] rounded-xl pl-10 pr-4 py-2 focus:outline-none focus:bg-[#767680]/20 transition">
+                        </div>
+                    </div>
+
+                    <!-- Conversations List (10+ Threads) -->
+                    <div id="inbox-list" class="flex-1 overflow-y-auto divide-y divide-gray-100 pb-6">
+                        <!-- Dynamically populated by JS -->
+                    </div>
+                </div>
+
+                <!-- ==================== 2. CONVERSATION / CHAT VIEW ==================== -->
+                <div id="view-chat" class="view-panel view-chat flex flex-col bg-white">
+                    
+                    <!-- Chat Top Navigation Bar (Dead-Centered Sender Name + Call Button) -->
+                    <div class="ios-blur border-b border-gray-200/80 px-2.5 pt-3.5 pb-2.5 grid grid-cols-3 items-center z-20 shrink-0">
+                        <!-- Left: Back Button -->
+                        <div class="flex items-center justify-start">
+                            <button onclick="closeChat()" class="flex items-center text-[#007AFF] px-1 py-1 rounded-lg active:opacity-50">
+                                <svg class="w-7 h-7 -ml-1 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
+                                </svg>
+                                <span id="unread-badge-back" class="text-[17px] font-medium ml-0.5 truncate">Messages</span>
+                            </button>
+                        </div>
+
+                        <!-- Center: Sender Avatar & Name (Dead Center) -->
+                        <div class="flex flex-col items-center justify-center cursor-pointer group" onclick="openAvatarModal()" title="Change Photo or View Info">
+                            <div id="chat-header-avatar" class="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shadow-sm overflow-hidden relative">
+                                M
+                            </div>
+                            <div class="flex items-center justify-center space-x-0.5 mt-1 max-w-full">
+                                <span id="chat-header-name" class="text-[17px] font-bold text-black truncate max-w-[140px] text-center leading-tight">Sender Name</span>
+                                <svg class="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                                </svg>
+                            </div>
+                            <span id="chat-header-subtitle" class="text-[12px] text-gray-500 font-medium truncate max-w-[140px]">iMessage</span>
+                        </div>
+
+                        <!-- Right: Call Button -->
+                        <div class="flex items-center justify-end pr-1">
+                            <button onclick="startCall()" class="flex items-center space-x-1.5 text-[#007AFF] bg-blue-50 hover:bg-blue-100 px-3.5 py-2 rounded-full active:scale-95 transition" title="Call">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C10.07 21 3 13.93 3 5a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.24 1.01l-2.21 2.2z"/>
+                                </svg>
+                                <span class="text-[15px] font-semibold">Call</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Editing Indicator Banner (Shown when editing a message) -->
+                    <div id="edit-banner" class="hidden bg-blue-50 border-b border-blue-200 px-4 py-2.5 flex items-center justify-between text-[15px] text-blue-700 z-10">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-5 h-5 text-[#007AFF]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z"/>
+                            </svg>
+                            <span class="font-semibold">Editing message...</span>
+                        </div>
+                        <button onclick="cancelEdit()" class="text-red-600 font-semibold px-2.5 py-1 rounded hover:bg-red-100">Cancel</button>
+                    </div>
+
+                    <!-- Messages Scroll Area (Swipe left to reveal individual message times) -->
+                    <div id="chat-messages-area" class="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3.5 space-y-1.5 bg-white">
+                        <!-- Dynamically populated by JS -->
+                    </div>
+
+                    <!-- Bottom Message Input Bar -->
+                    <div class="ios-blur border-t border-gray-200/80 px-3.5 py-3 flex items-end space-x-2.5 shrink-0 z-20">
+                        <button onclick="showToast('Camera & Photos coming soon')" class="w-9 h-9 rounded-full bg-gray-200/80 text-gray-600 flex items-center justify-center shrink-0 mb-0.5 active:scale-95 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex-1 bg-white border border-gray-300 rounded-2xl px-4 py-2 flex items-center shadow-2xs focus-within:border-[#007AFF] transition">
+                            <textarea id="message-input" rows="1" placeholder="iMessage" 
+                                oninput="autoResizeTextarea(this)"
+                                onkeydown="handleInputKeydown(event)"
+                                class="w-full text-[17px] text-black placeholder-gray-400 focus:outline-none resize-none max-h-28 leading-snug bg-transparent"></textarea>
+                        </div>
+
+                        <button id="send-btn" onclick="handleSendOrUpdate()" class="w-9 h-9 rounded-full bg-[#007AFF] text-white flex items-center justify-center shrink-0 mb-0.5 shadow-sm active:scale-90 transition">
+                            <svg id="send-icon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.8" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Home Indicator Bar (Bottom iPhone Bar) -->
+            <div class="h-5 bg-white flex items-center justify-center shrink-0 z-40">
+                <div class="w-36 h-1 bg-black/80 rounded-full"></div>
+            </div>
+
+            <!-- ==================== 3. LONG-PRESS CONTEXT MENU OVERLAY ==================== -->
+            <div id="context-overlay" class="hidden absolute inset-0 z-50 bg-black/40 backdrop-blur-md flex flex-col justify-center items-center p-5 transition-opacity" onclick="closeContextMenu(event)">
+                
+                <!-- Preview of Selected Message -->
+                <div id="context-preview-container" class="w-full max-w-[340px] mb-3.5 flex flex-col" onclick="event.stopPropagation()">
+                    <div id="context-meta-info" class="text-[13px] text-white/95 font-medium mb-1.5 px-1 drop-shadow">
+                        <!-- Sender & Time info -->
+                    </div>
+                    <div id="context-bubble-clone" class="px-4 py-3 text-[17px] leading-[1.45] shadow-2xl break-words">
+                        <!-- Selected message text -->
+                    </div>
+                </div>
+
+                <!-- iPhone Style Action Menu -->
+                <div id="context-menu-box" class="w-64 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden divide-y divide-gray-200/80 context-menu-animate" onclick="event.stopPropagation()">
+                    
+                    <!-- Edit Option -->
+                    <button onclick="triggerEditAction()" class="w-full px-4 py-3.5 flex items-center justify-between text-left text-[18px] text-gray-900 hover:bg-gray-100 active:bg-gray-200 transition">
+                        <span>Edit</span>
+                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/>
+                        </svg>
+                    </button>
+
+                    <!-- Forward Option -->
+                    <button onclick="triggerForwardAction()" class="w-full px-4 py-3.5 flex items-center justify-between text-left text-[18px] text-gray-900 hover:bg-gray-100 active:bg-gray-200 transition">
+                        <span>Forward</span>
+                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"/>
+                        </svg>
+                    </button>
+
+                    <!-- Share Option -->
+                    <button onclick="triggerShareAction()" class="w-full px-4 py-3.5 flex items-center justify-between text-left text-[18px] text-gray-900 hover:bg-gray-100 active:bg-gray-200 transition">
+                        <span>Share</span>
+                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"/>
+                        </svg>
+                    </button>
+
+                    <!-- Delete Option -->
+                    <button onclick="triggerDeleteAction()" class="w-full px-4 py-3.5 flex items-center justify-between text-left text-[18px] text-red-600 font-medium hover:bg-red-50 active:bg-red-100 transition">
+                        <span>Delete</span>
+                        <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ==================== 4. FORWARD MODAL SHEET ==================== -->
+            <div id="forward-modal" class="hidden absolute inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end justify-center" onclick="closeForwardModal(event)">
+                <div class="w-full bg-white rounded-t-3xl max-h-[82%] flex flex-col shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
+                    <div class="px-4 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                        <button onclick="closeForwardModal()" class="text-[#007AFF] text-[17px] font-medium">Cancel</button>
+                        <span class="font-bold text-[18px] text-black">Forward to...</span>
+                        <div class="w-14"></div>
+                    </div>
+                    <div class="p-3.5 bg-blue-50/70 border-b border-blue-100 text-[15px] text-gray-700">
+                        <span class="font-semibold text-[#007AFF]">Message:</span>
+                        <p id="forward-preview-text" class="truncate mt-0.5 text-gray-800"></p>
+                    </div>
+                    <div id="forward-contacts-list" class="flex-1 overflow-y-auto divide-y divide-gray-100 p-2">
+                        <!-- Contacts populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 5. NEW MESSAGE MODAL ==================== -->
+            <div id="new-chat-modal" class="hidden absolute inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end justify-center" onclick="closeNewChatModal(event)">
+                <div class="w-full bg-white rounded-t-3xl p-5 flex flex-col shadow-2xl space-y-4" onclick="event.stopPropagation()">
+                    <div class="flex items-center justify-between border-b border-gray-100 pb-3.5">
+                        <button onclick="closeNewChatModal()" class="text-[#007AFF] text-[17px] font-medium">Cancel</button>
+                        <span class="font-bold text-[18px] text-black">New iMessage</span>
+                        <button onclick="createNewThread()" class="text-[#007AFF] font-bold text-[17px]">Send</button>
+                    </div>
+                    <div>
+                        <label class="text-[14px] font-semibold text-gray-600">To (Sender Name or Number)</label>
+                        <input type="text" id="new-contact-name" placeholder="e.g. Alex Johnson or +1 555-0192" class="w-full mt-1.5 border border-gray-300 rounded-xl px-3.5 py-2.5 text-[17px] focus:outline-none focus:border-[#007AFF]">
+                    </div>
+                    <div>
+                        <label class="text-[14px] font-semibold text-gray-600">Message</label>
+                        <textarea id="new-contact-msg" rows="3" placeholder="Type your message here..." class="w-full mt-1.5 border border-gray-300 rounded-xl px-3.5 py-2.5 text-[17px] focus:outline-none focus:border-[#007AFF]"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 6. RESET CONFIRMATION SHEET ==================== -->
+            <div id="reset-modal" class="hidden absolute inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end justify-center p-3" onclick="closeResetModal(event)">
+                <div class="w-full space-y-2.5" onclick="event.stopPropagation()">
+                    <div class="bg-white/95 backdrop-blur-xl rounded-2xl overflow-hidden text-center divide-y divide-gray-200">
+                        <div class="p-4">
+                            <p class="text-[15px] text-gray-600">Are you sure you want to restore all 10 default conversations? Your current edits will be reset.</p>
+                        </div>
+                        <button onclick="confirmResetData()" class="w-full py-4 text-red-600 font-semibold text-[18px] active:bg-gray-100">
+                            Reset All Messages
+                        </button>
+                    </div>
+                    <button onclick="closeResetModal()" class="w-full py-4 bg-white rounded-2xl text-[#007AFF] font-semibold text-[18px] shadow-lg active:bg-gray-100">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+
+            <!-- ==================== 7. iPHONE CALLING OVERLAY SCREEN ==================== -->
+            <div id="call-screen" class="hidden absolute inset-0 z-[65] bg-gradient-to-b from-slate-900 via-gray-900 to-black text-white flex flex-col justify-between py-12 px-6">
+                <!-- Top Caller Info -->
+                <div class="flex flex-col items-center text-center mt-4">
+                    <div id="call-avatar" class="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold shadow-2xl mb-4 overflow-hidden border-2 border-white/20">
+                        M
+                    </div>
+                    <h2 id="call-name" class="text-[26px] font-bold tracking-tight">Sender Name</h2>
+                    <p id="call-phone" class="text-[16px] text-gray-400 mt-1">+1 (555) 234-5678</p>
+                    <p id="call-status" class="text-[16px] text-emerald-400 font-medium mt-2 animate-pulse">calling...</p>
+                </div>
+
+                <!-- Middle iPhone Call Controls -->
+                <div class="grid grid-cols-3 gap-5 max-w-[290px] mx-auto my-auto">
+                    <button onclick="toggleCallBtn(this)" class="flex flex-col items-center space-y-2 group">
+                        <div class="w-16 h-16 rounded-full bg-white/15 group-active:bg-white/30 flex items-center justify-center transition">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/>
+                            </svg>
+                        </div>
+                        <span class="text-[14px] text-gray-300">Mute</span>
+                    </button>
+
+                    <button onclick="toggleCallBtn(this)" class="flex flex-col items-center space-y-2 group">
+                        <div class="w-16 h-16 rounded-full bg-white/15 group-active:bg-white/30 flex items-center justify-center transition">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/>
+                            </svg>
+                        </div>
+                        <span class="text-[14px] text-gray-300">Keypad</span>
+                    </button>
+
+                    <button onclick="toggleCallBtn(this)" class="flex flex-col items-center space-y-2 group">
+                        <div class="w-16 h-16 rounded-full bg-white/15 group-active:bg-white/30 flex items-center justify-center transition">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/>
+                            </svg>
+                        </div>
+                        <span class="text-[14px] text-gray-300">Speaker</span>
+                    </button>
+                </div>
+
+                <!-- Bottom End Call Button -->
+                <div class="flex flex-col items-center mb-4">
+                    <button onclick="endCall()" class="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 active:scale-90 flex items-center justify-center shadow-lg shadow-red-600/40 transition">
+                        <svg class="w-8 h-8 text-white rotate-[135deg]" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C10.07 21 3 13.93 3 5a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.24 1.01l-2.21 2.2z"/>
+                        </svg>
+                    </button>
+                    <span class="text-[14px] text-gray-400 mt-2">End Call</span>
+                </div>
+            </div>
+
+            <!-- ==================== 8. CHANGE AVATAR / PICTURE MODAL ==================== -->
+            <div id="avatar-modal" class="hidden absolute inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end justify-center" onclick="closeAvatarModal(event)">
+                <div class="w-full bg-white rounded-t-3xl p-5 flex flex-col shadow-2xl space-y-4" onclick="event.stopPropagation()">
+                    <div class="flex items-center justify-between border-b border-gray-100 pb-3.5">
+                        <button onclick="closeAvatarModal()" class="text-[#007AFF] text-[17px] font-medium">Cancel</button>
+                        <span class="font-bold text-[18px] text-black">Change Photo</span>
+                        <button onclick="saveAvatarImage()" class="text-[#007AFF] font-bold text-[17px]">Save Changes</button>
+                    </div>
+                    <div class="text-center">
+                        <p id="avatar-modal-sender" class="font-bold text-[19px] text-gray-900"></p>
+                        <p id="avatar-modal-phone" class="text-[15px] text-gray-500"></p>
+                    </div>
+                    <div>
+                        <label class="text-[14px] font-semibold text-gray-600">Choose Photo from Device:</label>
+                        <input type="file" id="avatar-file-input" accept="image/*" onchange="handleAvatarFileSelect(event)" class="w-full mt-1.5 text-[15px] text-gray-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-[14px] file:font-semibold file:bg-blue-50 file:text-[#007AFF] hover:file:bg-blue-100">
+                    </div>
+                    <div>
+                        <label class="text-[14px] font-semibold text-gray-600">Or Paste Image URL:</label>
+                        <input type="text" id="avatar-url-input" placeholder="https://example.com/photo.jpg" class="w-full mt-1.5 border border-gray-300 rounded-xl px-3.5 py-2.5 text-[16px] focus:outline-none focus:border-[#007AFF]">
+                    </div>
+                    <button onclick="removeCustomAvatar()" class="w-full py-3 text-[15px] font-semibold text-red-600 bg-red-50 rounded-xl active:bg-red-100">
+                        Restore Default Icon
+                    </button>
+                </div>
+            </div>
+
+            <!-- ==================== 9. iOS TOAST NOTIFICATION ==================== -->
+            <div id="ios-toast" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-[70] bg-gray-900/95 text-white text-[15px] font-medium px-4 py-2.5 rounded-full shadow-xl backdrop-blur-md whitespace-nowrap transition-all">
+                Toast Message
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // RECEIVE INCOMING MESSAGES (EDIT IN CODE HERE)
+        // ==========================================
+        // HOW TO USE:
+        // 1. Add any incoming message object inside `INCOMING_MESSAGES_FROM_CODE` below.
+        // 2. Each object supports:
+        //    - id: Unique string ID (e.g., 'in_101') so it delivers once and stays saved permanently.
+        //    - chatId: Target conversation ID ('thread_1' through 'thread_10', or any sender name).
+        //    - text: Incoming message text (appears on the LEFT side in a gray bubble).
+        //    - dateISO: Optional ISO date/time string (e.g., '2026-11-26T10:15:00' or '2026-11-25T18:30:00')
+        //               to test Today, Yesterday, or older calendar dates. Leave empty '' for right now.
+        // 3. You can also call `receiveIncomingMessage('thread_1', 'Hello!', '2026-11-26T10:20:00')` in code/console.
+        const INCOMING_MESSAGES_FROM_CODE = [
+            // Example (Uncomment to test):
+            // {
+            //     id: 'in_custom_01',
+            //     chatId: 'thread_1', // Sends as Mom â¤ï¸
+            //     text: 'Hey! Call me whenever you get a free minute.',
+            //     dateISO: '' // Uses current date & time
+            // }
+        ];
+
+        // ==================== DATE & RELATIVE DAY HELPERS ====================
+        // Builds a local ISO string offset by `daysOffset` from today at `hour:minute`
+        function buildRelativeISO(daysOffset, hour, minute) {
+            const d = new Date();
+            d.setDate(d.getDate() + daysOffset);
+            d.setHours(hour, minute, 0, 0);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}T${hh}:${min}:00`;
+        }
+
+        function getLocalDateKey(dateObj) {
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        function parseMessageDate(msg) {
+            if (msg.dateISO) {
+                const parsed = new Date(msg.dateISO);
+                if (!isNaN(parsed.getTime())) return parsed;
+            }
+            return new Date();
+        }
+
+        // Returns 'Today', 'Yesterday', or formatted calendar date (e.g., 'Nov 24, 2026')
+        function getDynamicDayHeader(dateObj) {
+            const now = new Date();
+            const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const msgMidnight = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+            const diffDays = Math.round((todayMidnight - msgMidnight) / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 0) return 'Today';
+            if (diffDays === 1) return 'Yesterday';
+
+            return dateObj.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+        }
+
+        // Returns clean 12-hour clock time (e.g., '10:23 AM')
+        function formatClockTime(dateObj) {
+            let hours = dateObj.getHours();
+            let minutes = dateObj.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12 || 12;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            return `${hours}:${minutes} ${ampm}`;
+        }
+
+        // Returns compact label for Inbox list ('10:23 AM', 'Yesterday', or 'Nov 24')
+        function getInboxPreviewTime(dateObj) {
+            const dayLabel = getDynamicDayHeader(dateObj);
+            if (dayLabel === 'Today') return formatClockTime(dateObj);
+            if (dayLabel === 'Yesterday') return 'Yesterday';
+            return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        // ==================== INITIAL 10 MESSAGES DATA ====================
+        // NOTE: To set a custom photo on any contact avatar in code, paste an image URL inside `avatarImage`.
+        const STORAGE_KEY = 'iphone_messages_app_en_v4';
+        const DELIVERED_INCOMING_KEY = 'iphone_messages_delivered_incoming_v4';
+
+        function createDefaultThreads() {
+            return [
+                {
+                    id: 'thread_1',
+                    sender: 'Mom â¤ï¸',
+                    phone: '+1 (555) 234-8890',
+                    avatarText: 'MO',
+                    avatarColor: 'bg-gradient-to-br from-pink-500 to-rose-600',
+                    avatarImage: '',
+                    unread: true,
+                    messages: [
+                        { id: 'm1_0', text: 'Did you remember to pick up your dry cleaning yesterday?', type: 'received', dateISO: buildRelativeISO(-1, 18, 20) },
+                        { id: 'm1_1', text: 'Good morning sweetie! Did you have breakfast yet?', type: 'received', dateISO: buildRelativeISO(0, 9, 10) },
+                        { id: 'm1_2', text: 'Morning Mom! Yes, just had coffee and toast.', type: 'sent', dateISO: buildRelativeISO(0, 9, 12) },
+                        { id: 'm1_3', text: 'That is great. Drive safely and let me know when you get home tonight.', type: 'received', dateISO: buildRelativeISO(0, 9, 15) }
+                    ]
+                },
+                {
+                    id: 'thread_2',
+                    sender: 'David Miller',
+                    phone: '+1 (555) 876-5432',
+                    avatarText: 'DM',
+                    avatarColor: 'bg-gradient-to-br from-blue-500 to-indigo-600',
+                    avatarImage: '',
+                    unread: true,
+                    messages: [
+                        { id: 'm2_1', text: 'Hey man, what time are you heading to the office today?', type: 'received', dateISO: buildRelativeISO(0, 8, 40) },
+                        { id: 'm2_2', text: 'Leaving around 9:30 AM. Do you need a ride?', type: 'sent', dateISO: buildRelativeISO(0, 8, 42) },
+                        { id: 'm2_3', text: 'Yes please! My car is in the shop until tomorrow.', type: 'received', dateISO: buildRelativeISO(0, 8, 45) }
+                    ]
+                },
+                {
+                    id: 'thread_3',
+                    sender: 'Chase Bank',
+                    phone: '242-73',
+                    avatarText: 'CB',
+                    avatarColor: 'bg-gradient-to-br from-slate-600 to-slate-800',
+                    avatarImage: '',
+                    unread: false,
+                    messages: [
+                        { id: 'm3_1', text: 'Chase Alert: A debit card purchase of $48.50 at WHOLE FOODS MARKET was authorized. Avl Bal: $4,820.15.', type: 'received', dateISO: buildRelativeISO(-1, 20, 30) }
+                    ]
+                },
+                {
+                    id: 'thread_4',
+                    sender: 'Sarah Jenkins',
+                    phone: '+1 (555) 432-1987',
+                    avatarText: 'SJ',
+                    avatarColor: 'bg-gradient-to-br from-purple-500 to-violet-600',
+                    avatarImage: '',
+                    unread: false,
+                    messages: [
+                        { id: 'm4_1', text: 'Is the slide deck ready for tomorrow morningâs client pitch?', type: 'received', dateISO: buildRelativeISO(-1, 17, 15) },
+                        { id: 'm4_2', text: 'Almost done! Just polishing the final revenue chart.', type: 'sent', dateISO: buildRelativeISO(-1, 17, 20) },
+                        { id: 'm4_3', text: 'Awesome! Send me a copy via email once you wrap it up.', type: 'received', dateISO: buildRelativeISO(-1, 17, 22) }
+                    ]
+                },
+                {
+                    id: 'thread_5',
+                    sender: 'Dad',
+                    phone: '+1 (555) 345-6712',
+                    avatarText: 'DA',
+                    avatarColor: 'bg-gradient-to-br from-emerald-500 to-teal-700',
+                    avatarImage: '',
+                    unread: false,
+                    messages: [
+                        { id: 'm5_1', text: 'I paid the home insurance renewal today. Sent the receipt to your inbox.', type: 'received', dateISO: buildRelativeISO(-2, 11, 5) },
+                        { id: 'm5_2', text: 'Got it, thanks so much Dad!', type: 'sent', dateISO: buildRelativeISO(-2, 11, 12) }
+                    ]
+                },
+                {
+                    id: 'thread_6',
+                    sender: 'Amazon',
+                    phone: '262-966',
+                    avatarText: 'AZ',
+                    avatarColor: 'bg-gradient-to-br from-amber-500 to-orange-600',
+                    avatarImage: '',
+                    unread: true,
+                    messages: [
+                        { id: 'm6_1', text: 'Out for Delivery: Your package with Apple AirPods Pro will arrive today by 7:00 PM. One-time passcode: 4921.', type: 'received', dateISO: buildRelativeISO(-2, 10, 0) }
+                    ]
+                },
+                {
+                    id: 'thread_7',
+                    sender: 'Michael Ross',
+                    phone: '+1 (555) 654-3210',
+                    avatarText: 'MR',
+                    avatarColor: 'bg-gradient-to-br from-cyan-500 to-blue-600',
+                    avatarImage: '',
+                    unread: false,
+                    messages: [
+                        { id: 'm7_1', text: 'Are we still planning that weekend hiking trip up north?', type: 'received', dateISO: buildRelativeISO(-3, 18, 45) },
+                        { id: 'm7_2', text: 'Definitely! If we leave at 6 AM we will beat all the traffic.', type: 'sent', dateISO: buildRelativeISO(-3, 18, 50) }
+                    ]
+                },
+                {
+                    id: 'thread_8',
+                    sender: 'AT&T Wireless',
+                    phone: '753-89',
+                    avatarText: 'AT',
+                    avatarColor: 'bg-gradient-to-br from-blue-600 to-blue-800',
+                    avatarImage: '',
+                    unread: false,
+                    messages: [
+                        { id: 'm8_1', text: 'AT&T Free Msg: Your monthly AutoPay payment of $75.00 is scheduled. Thank you for choosing AT&T.', type: 'received', dateISO: buildRelativeISO(-4, 14, 15) }
+                    ]
+                },
+                {
+                    id: 'thread_9',
+                    sender: 'Emily Carter',
+                    phone: '+1 (555) 789-0123',
+                    avatarText: 'EC',
+                    avatarColor: 'bg-gradient-to-br from-fuchsia-500 to-pink-600',
+                    avatarImage: '',
+                    unread: false,
+                    messages: [
+                        { id: 'm9_1', text: 'I uploaded all the wedding photos to the shared album. Check them out!', type: 'received', dateISO: buildRelativeISO(-5, 16, 10) },
+                        { id: 'm9_2', text: 'They turned out incredible Emily, thank you for sharing!', type: 'sent', dateISO: buildRelativeISO(-5, 16, 30) }
+                    ]
+                },
+                {
+                    id: 'thread_10',
+                    sender: 'Delta Air Lines',
+                    phone: '335-82',
+                    avatarText: 'DL',
+                    avatarColor: 'bg-gradient-to-br from-indigo-500 to-slate-700',
+                    avatarImage: '',
+                    unread: false,
+                    messages: [
+                        { id: 'm10_1', text: 'Flight DL 1402 to New York (JFK) is on time. Boarding begins at 8:15 AM at Gate B14. Seat 12A.', type: 'received', dateISO: buildRelativeISO(-7, 9, 0) }
+                    ]
+                }
+            ];
+        }
+
+        // ==================== APPLICATION STATE ====================
+        let threads = [];
+        let activeThreadId = null;
+        let selectedMessageId = null;
+        let editingMessageId = null;
+        let pressTimer = null;
+        let isLongPressTriggered = false;
+        let callTimerInterval = null;
+        let pendingAvatarDataUrl = '';
+        let lastKnownDateKey = getLocalDateKey(new Date());
+
+        // ==================== INITIALIZATION & LOCALSTORAGE ====================
+        function loadData() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    threads = JSON.parse(saved);
+                } else {
+                    threads = createDefaultThreads();
+                    saveData();
+                }
+            } catch (e) {
+                console.error("Storage error:", e);
+                threads = createDefaultThreads();
+            }
+        }
+
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(threads));
+            } catch (e) {
+                console.error("Failed to save to localStorage:", e);
+            }
+        }
+
+        // ==================== AUTOMATIC 12:00 AM MIDNIGHT ROLLOVER ====================
+        function startMidnightRolloverWatcher() {
+            // Check every 10 seconds if the calendar day rolled over at 12:00 AM
+            setInterval(() => {
+                const currentKey = getLocalDateKey(new Date());
+                if (currentKey !== lastKnownDateKey) {
+                    lastKnownDateKey = currentKey;
+                    renderInbox();
+                    if (activeThreadId) {
+                        renderChatMessages();
+                    }
+                }
+            }, 10000);
+
+            // Also re-evaluate immediately when user returns to browser tab / unlocks phone
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    const currentKey = getLocalDateKey(new Date());
+                    if (currentKey !== lastKnownDateKey) {
+                        lastKnownDateKey = currentKey;
+                    }
+                    renderInbox();
+                    if (activeThreadId) {
+                        renderChatMessages();
+                    }
+                }
+            });
+        }
+
+        // ==================== PROCESS CODE-LEVEL INCOMING MESSAGES ====================
+        function receiveIncomingMessage(chatIdOrName, messageText, customDateISO = '') {
+            if (!messageText || !chatIdOrName) return false;
+
+            let thread = threads.find(
+                t => t.id === chatIdOrName || t.sender.toLowerCase() === chatIdOrName.toLowerCase()
+            );
+
+            const msgDateISO = customDateISO && !isNaN(new Date(customDateISO).getTime())
+                ? new Date(customDateISO).toISOString()
+                : new Date().toISOString();
+
+            if (!thread) {
+                const initials = chatIdOrName.slice(0, 2).toUpperCase();
+                thread = {
+                    id: 'thread_' + Date.now(),
+                    sender: chatIdOrName,
+                    phone: 'iMessage Contact',
+                    avatarText: initials,
+                    avatarColor: 'bg-gradient-to-br from-blue-500 to-indigo-600',
+                    avatarImage: '',
+                    unread: true,
+                    messages: []
+                };
+                threads.unshift(thread);
+            }
+
+            const incomingMsg = {
+                id: 'msg_in_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                text: messageText,
+                type: 'received', // Always displays on the LEFT side in gray bubble
+                dateISO: msgDateISO
+            };
+
+            thread.messages.push(incomingMsg);
+
+            if (activeThreadId !== thread.id) {
+                thread.unread = true;
+            }
+
+            threads = [thread, ...threads.filter(t => t.id !== thread.id)];
+            saveData();
+            renderInbox();
+
+            if (activeThreadId === thread.id) {
+                renderChatMessages();
+                scrollToBottom();
+            }
+            return true;
+        }
+
+        function processCodeIncomingMessages() {
+            if (!Array.isArray(INCOMING_MESSAGES_FROM_CODE) || INCOMING_MESSAGES_FROM_CODE.length === 0) return;
+
+            let deliveredIds = [];
+            try {
+                deliveredIds = JSON.parse(localStorage.getItem(DELIVERED_INCOMING_KEY) || '[]');
+            } catch (e) {
+                deliveredIds = [];
+            }
+
+            let anyDelivered = false;
+            INCOMING_MESSAGES_FROM_CODE.forEach(item => {
+                if (!item || !item.id || !item.chatId || !item.text) return;
+                if (!deliveredIds.includes(item.id)) {
+                    const success = receiveIncomingMessage(item.chatId, item.text, item.dateISO || item.time || '');
+                    if (success) {
+                        deliveredIds.push(item.id);
+                        anyDelivered = true;
+                    }
+                }
+            });
+
+            if (anyDelivered) {
+                localStorage.setItem(DELIVERED_INCOMING_KEY, JSON.stringify(deliveredIds));
+            }
+        }
+
+        // Helper to render Avatar (Image if set, otherwise Initials + Gradient)
+        function getAvatarHtml(thread) {
+            if (thread.avatarImage && thread.avatarImage.trim() !== '') {
+                return `<img src="${escapeHtml(thread.avatarImage)}" alt="${escapeHtml(thread.sender)}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.textContent='${escapeHtml(thread.avatarText)}';">`;
+            }
+            return escapeHtml(thread.avatarText);
+        }
+
+        // ==================== RENDER INBOX LIST ====================
+        function renderInbox() {
+            const listEl = document.getElementById('inbox-list');
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+            listEl.innerHTML = '';
+
+            const filteredThreads = threads.filter(t => {
+                const lastMsg = t.messages.length ? t.messages[t.messages.length - 1].text.toLowerCase() : '';
+                return t.sender.toLowerCase().includes(query) || lastMsg.includes(query);
+            });
+
+            if (filteredThreads.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-12 px-6 text-gray-400 text-[17px]">
+                        No messages found.
+                    </div>
+                `;
+                return;
+            }
+
+            filteredThreads.forEach(thread => {
+                const lastMsgObj = thread.messages[thread.messages.length - 1];
+                const previewText = lastMsgObj ? lastMsgObj.text : 'No messages';
+                const timeText = lastMsgObj ? getInboxPreviewTime(parseMessageDate(lastMsgObj)) : '';
+
+                const item = document.createElement('div');
+                item.className = 'flex items-center px-3.5 py-3 hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition select-none';
+                item.onclick = () => openChat(thread.id);
+
+                item.innerHTML = `
+                    <!-- Unread Blue Dot -->
+                    <div class="w-4 flex items-center justify-center shrink-0">
+                        ${thread.unread ? '<span class="w-3 h-3 rounded-full bg-[#007AFF]"></span>' : ''}
+                    </div>
+
+                    <!-- Avatar Circle (Supports Custom Picture or Default Initials) -->
+                    <div class="w-[52px] h-[52px] rounded-full ${thread.avatarColor} text-white font-bold text-[18px] flex items-center justify-center shrink-0 mr-3.5 shadow-xs overflow-hidden">
+                        ${getAvatarHtml(thread)}
+                    </div>
+
+                    <!-- Sender & Snippet -->
+                    <div class="flex-1 min-w-0 pr-1">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-[18px] font-bold text-black truncate">${escapeHtml(thread.sender)}</h3>
+                            <div class="flex items-center text-gray-400 text-[15px] shrink-0 ml-2">
+                                <span>${escapeHtml(timeText)}</span>
+                                <svg class="w-4 h-4 ml-0.5 text-gray-300" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <p class="text-[15px] ${thread.unread ? 'text-gray-900 font-medium' : 'text-gray-500'} line-clamp-2 leading-snug mt-0.5">
+                            ${escapeHtml(previewText)}
+                        </p>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        // ==================== OPEN & CLOSE CHAT ====================
+        function openChat(threadId) {
+            activeThreadId = threadId;
+            const thread = threads.find(t => t.id === threadId);
+            if (!thread) return;
+
+            if (thread.unread) {
+                thread.unread = false;
+                saveData();
+                renderInbox();
+            }
+
+            const avatarEl = document.getElementById('chat-header-avatar');
+            avatarEl.className = `w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shadow-sm overflow-hidden relative ${thread.avatarColor}`;
+            avatarEl.innerHTML = getAvatarHtml(thread);
+            document.getElementById('chat-header-name').textContent = thread.sender;
+            document.getElementById('chat-header-subtitle').textContent = thread.phone;
+
+            const unreadCount = threads.filter(t => t.unread).length;
+            document.getElementById('unread-badge-back').textContent = unreadCount > 0 ? `Messages (${unreadCount})` : 'Messages';
+
+            cancelEdit();
+            renderChatMessages();
+
+            document.getElementById('view-inbox').classList.add('slide-out');
+            document.getElementById('view-chat').classList.add('slide-in');
+
+            setTimeout(() => {
+                scrollToBottom();
+            }, 100);
+        }
+
+        function closeChat() {
+            cancelEdit();
+            document.getElementById('view-inbox').classList.remove('slide-out');
+            document.getElementById('view-chat').classList.remove('slide-in');
+            activeThreadId = null;
+            renderInbox();
+        }
+
+        // ==================== RENDER CHAT MESSAGES (SINGLE DAY HEADER + SWIPE-LEFT TIME) ====================
+        function renderChatMessages() {
+            const container = document.getElementById('chat-messages-area');
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return;
+
+            container.innerHTML = '';
+
+            // Top iMessage Info Header inside chat
+            const headerInfo = document.createElement('div');
+            headerInfo.className = 'text-center py-3 mb-2 border-b border-gray-100';
+            headerInfo.innerHTML = `
+                <div class="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">iMessage â¢ SMS</div>
+                <div class="text-[14px] text-gray-500 mt-0.5">From: <span class="font-semibold text-gray-800">${escapeHtml(thread.sender)}</span> (${escapeHtml(thread.phone)})</div>
+            `;
+            container.appendChild(headerInfo);
+
+            if (thread.messages.length === 0) {
+                container.innerHTML += `
+                    <div class="text-center text-gray-400 text-[16px] py-10">
+                        All messages in this chat were deleted. Type below to send a new message.
+                    </div>
+                `;
+                return;
+            }
+
+            let lastRenderedDateKey = null;
+
+            thread.messages.forEach((msg, index) => {
+                const isSent = msg.type === 'sent';
+                const msgDateObj = parseMessageDate(msg);
+                const currentDateKey = getLocalDateKey(msgDateObj);
+
+                // Show ONE single centered date header ONLY when the calendar day changes
+                if (currentDateKey !== lastRenderedDateKey) {
+                    lastRenderedDateKey = currentDateKey;
+                    const dayDiv = document.createElement('div');
+                    dayDiv.className = 'text-center my-3 select-none';
+                    dayDiv.innerHTML = `
+                        <span class="inline-block text-[13px] font-semibold text-gray-500 bg-gray-100/90 px-3 py-1 rounded-full">
+                            ${escapeHtml(getDynamicDayHeader(msgDateObj))}
+                        </span>
+                    `;
+                    container.appendChild(dayDiv);
+                }
+
+                // Message Row Wrapper (Slides left to reveal exact time on the right edge)
+                const rowWrapper = document.createElement('div');
+                rowWrapper.className = 'msg-row-wrapper mb-1.5';
+
+                const slideTrack = document.createElement('div');
+                slideTrack.className = `msg-slide-track flex flex-col ${isSent ? 'items-end' : 'items-start'}`;
+
+                // Bubble Element
+                const bubble = document.createElement('div');
+                bubble.id = `msg-bubble-${msg.id}`;
+                bubble.className = `max-w-[80%] px-4 py-3 text-[17px] leading-[1.45] cursor-pointer transition-transform break-words ${isSent ? 'bubble-sent' : 'bubble-received'}`;
+                
+                let contentHtml = `<span>${escapeHtml(msg.text)}</span>`;
+                if (msg.edited) {
+                    contentHtml += `<span class="block text-[12px] mt-1 opacity-80 italic text-right">Edited</span>`;
+                }
+                if (msg.forwarded) {
+                    contentHtml = `<span class="block text-[12px] mb-1 opacity-80 italic flex items-center gap-1">âª Forwarded</span>` + contentHtml;
+                }
+                bubble.innerHTML = contentHtml;
+
+                // Attach Long-Press (Touch & Mouse) Listeners
+                attachLongPressEvents(bubble, msg.id);
+
+                slideTrack.appendChild(bubble);
+
+                // Delivered status for last sent message
+                if (isSent && index === thread.messages.length - 1) {
+                    const statusLabel = document.createElement('span');
+                    statusLabel.className = 'text-[12px] text-gray-400 font-semibold mt-1 mr-1';
+                    statusLabel.textContent = 'Delivered';
+                    slideTrack.appendChild(statusLabel);
+                }
+
+                // Hidden Clock Time on Right Edge (Revealed when sliding left)
+                const sideTime = document.createElement('span');
+                sideTime.className = 'msg-side-time';
+                sideTime.textContent = formatClockTime(msgDateObj);
+                slideTrack.appendChild(sideTime);
+
+                rowWrapper.appendChild(slideTrack);
+                container.appendChild(rowWrapper);
+            });
+        }
+
+        // ==================== iPHONE SWIPE-LEFT TO REVEAL TIMESTAMPS ====================
+        function initSwipeLeftTimestamps() {
+            const chatArea = document.getElementById('chat-messages-area');
+            let startX = 0;
+            let startY = 0;
+            let isDragging = false;
+            let isHorizontalSwipe = null;
+            const MAX_REVEAL_OFFSET = 80; // px to reveal clock time on the right
+
+            function applyTrackOffset(offsetPx, withSpring) {
+                const tracks = chatArea.querySelectorAll('.msg-slide-track');
+                tracks.forEach(track => {
+                    if (withSpring) {
+                        track.classList.add('msg-slide-spring');
+                    } else {
+                        track.classList.remove('msg-slide-spring');
+                    }
+                    track.style.transform = `translateX(${offsetPx}px)`;
+                });
+            }
+
+            function onPointerStart(clientX, clientY) {
+                startX = clientX;
+                startY = clientY;
+                isDragging = true;
+                isHorizontalSwipe = null;
+            }
+
+            function onPointerMove(clientX, clientY) {
+                if (!isDragging) return;
+                const dx = clientX - startX;
+                const dy = clientY - startY;
+
+                if (isHorizontalSwipe === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+                    isHorizontalSwipe = Math.abs(dx) > Math.abs(dy);
+                }
+
+                if (isHorizontalSwipe) {
+                    // Cancel any pending long-press if user starts swiping left
+                    clearTimeout(pressTimer);
+                    document.querySelectorAll('.bubble-pressing').forEach(el => el.classList.remove('bubble-pressing'));
+
+                    // Only allow dragging to the left (negative dx) up to MAX_REVEAL_OFFSET
+                    let clamped = Math.min(0, Math.max(-MAX_REVEAL_OFFSET, dx));
+                    applyTrackOffset(clamped, false);
+                }
+            }
+
+            function onPointerEnd() {
+                if (!isDragging) return;
+                isDragging = false;
+                isHorizontalSwipe = null;
+                // Spring smoothly back to 0px when finger/mouse is released
+                applyTrackOffset(0, true);
+            }
+
+            // Touch events (Mobile)
+            chatArea.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    onPointerStart(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
+
+            chatArea.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1) {
+                    onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: true });
+
+            chatArea.addEventListener('touchend', onPointerEnd);
+            chatArea.addEventListener('touchcancel', onPointerEnd);
+
+            // Mouse drag events (Desktop testing)
+            chatArea.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    onPointerStart(e.clientX, e.clientY);
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    onPointerMove(e.clientX, e.clientY);
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    onPointerEnd();
+                }
+            });
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('chat-messages-area');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ==================== SEND OR UPDATE MESSAGE ====================
+        function handleInputKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendOrUpdate();
+            }
+        }
+
+        function autoResizeTextarea(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 112) + 'px';
+        }
+
+        function handleSendOrUpdate() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (!text || !activeThreadId) return;
+
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return;
+
+            if (editingMessageId) {
+                const msg = thread.messages.find(m => m.id === editingMessageId);
+                if (msg) {
+                    msg.text = text;
+                    msg.edited = true;
+                    showToast('Message updated');
+                }
+                cancelEdit();
+            } else {
+                const newMsg = {
+                    id: 'msg_' + Date.now(),
+                    text: text,
+                    type: 'sent',
+                    dateISO: new Date().toISOString()
+                };
+                thread.messages.push(newMsg);
+
+                threads = [thread, ...threads.filter(t => t.id !== thread.id)];
+            }
+
+            input.value = '';
+            input.style.height = 'auto';
+            saveData();
+            renderChatMessages();
+            scrollToBottom();
+        }
+
+        // ==================== LONG-PRESS (CLICK & HOLD) LOGIC ====================
+        function attachLongPressEvents(element, msgId) {
+            const startPress = (e) => {
+                if (e.type === 'mousedown' && e.button !== 0) return;
+                
+                isLongPressTriggered = false;
+                element.classList.add('bubble-pressing');
+
+                pressTimer = setTimeout(() => {
+                    isLongPressTriggered = true;
+                    element.classList.remove('bubble-pressing');
+                    if (navigator.vibrate) navigator.vibrate(40);
+                    openContextMenu(msgId);
+                }, 480);
+            };
+
+            const cancelPress = () => {
+                clearTimeout(pressTimer);
+                element.classList.remove('bubble-pressing');
+            };
+
+            element.addEventListener('touchstart', startPress, { passive: true });
+            element.addEventListener('touchend', cancelPress);
+            element.addEventListener('touchmove', cancelPress);
+
+            element.addEventListener('mousedown', startPress);
+            element.addEventListener('mouseup', cancelPress);
+            element.addEventListener('mouseleave', cancelPress);
+
+            element.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                openContextMenu(msgId);
+            });
+        }
+
+        function openContextMenu(msgId) {
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return;
+            const msg = thread.messages.find(m => m.id === msgId);
+            if (!msg) return;
+
+            selectedMessageId = msgId;
+
+            const msgDateObj = parseMessageDate(msg);
+            const metaInfo = document.getElementById('context-meta-info');
+            const senderLabel = msg.type === 'sent' ? 'You' : thread.sender;
+            metaInfo.textContent = `${senderLabel} â¢ ${getDynamicDayHeader(msgDateObj)}, ${formatClockTime(msgDateObj)}`;
+
+            const cloneEl = document.getElementById('context-bubble-clone');
+            cloneEl.textContent = msg.text;
+            cloneEl.className = `px-4 py-3 text-[17px] leading-[1.45] shadow-2xl break-words bubble-highlighted ${
+                msg.type === 'sent' ? 'bubble-sent self-end' : 'bubble-received self-start'
+            }`;
+
+            document.getElementById('context-overlay').classList.remove('hidden');
+        }
+
+        function closeContextMenu(e) {
+            if (e) e.stopPropagation();
+            document.getElementById('context-overlay').classList.add('hidden');
+        }
+
+        // ==================== CONTEXT MENU ACTIONS: EDIT, FORWARD, SHARE, DELETE ====================
+        
+        // 1. EDIT ACTION
+        function triggerEditAction() {
+            closeContextMenu();
+            const thread = threads.find(t => t.id === activeThreadId);
+            const msg = thread?.messages.find(m => m.id === selectedMessageId);
+            if (!msg) return;
+
+            editingMessageId = msg.id;
+            const input = document.getElementById('message-input');
+            input.value = msg.text;
+            autoResizeTextarea(input);
+            input.focus();
+
+            document.getElementById('edit-banner').classList.remove('hidden');
+            document.getElementById('send-btn').classList.replace('bg-[#007AFF]', 'bg-emerald-500');
+            document.getElementById('send-icon').innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>`;
+        }
+
+        function cancelEdit() {
+            editingMessageId = null;
+            const input = document.getElementById('message-input');
+            input.value = '';
+            input.style.height = 'auto';
+            document.getElementById('edit-banner').classList.add('hidden');
+            const btn = document.getElementById('send-btn');
+            btn.classList.remove('bg-emerald-500');
+            btn.classList.add('bg-[#007AFF]');
+            document.getElementById('send-icon').innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/>`;
+        }
+
+        // 2. DELETE ACTION
+        function triggerDeleteAction() {
+            closeContextMenu();
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread || !selectedMessageId) return;
+
+            thread.messages = thread.messages.filter(m => m.id !== selectedMessageId);
+
+            saveData();
+            renderChatMessages();
+            showToast('Message permanently deleted');
+        }
+
+        // 3. SHARE ACTION
+        async function triggerShareAction() {
+            closeContextMenu();
+            const thread = threads.find(t => t.id === activeThreadId);
+            const msg = thread?.messages.find(m => m.id === selectedMessageId);
+            if (!msg) return;
+
+            const msgDateObj = parseMessageDate(msg);
+            const shareText = `${msg.text}\nâ ${thread.sender} (${getDynamicDayHeader(msgDateObj)}, ${formatClockTime(msgDateObj)})`;
+
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: 'iMessage',
+                        text: shareText
+                    });
+                } catch (err) {
+                    // User cancelled share
+                }
+            } else {
+                const tempInput = document.createElement('textarea');
+                tempInput.value = shareText;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+                showToast('Message copied to clipboard!');
+            }
+        }
+
+        // 4. FORWARD ACTION
+        function triggerForwardAction() {
+            closeContextMenu();
+            const thread = threads.find(t => t.id === activeThreadId);
+            const msg = thread?.messages.find(m => m.id === selectedMessageId);
+            if (!msg) return;
+
+            document.getElementById('forward-preview-text').textContent = msg.text;
+            const listEl = document.getElementById('forward-contacts-list');
+            listEl.innerHTML = '';
+
+            threads.forEach(targetThread => {
+                const row = document.createElement('button');
+                row.className = 'w-full flex items-center justify-between px-3.5 py-3 hover:bg-gray-50 active:bg-blue-50 rounded-xl transition text-left';
+                row.onclick = () => executeForwardTo(targetThread.id, msg.text);
+
+                row.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-11 h-11 rounded-full ${targetThread.avatarColor} text-white font-bold text-[15px] flex items-center justify-center overflow-hidden">
+                            ${getAvatarHtml(targetThread)}
+                        </div>
+                        <div>
+                            <div class="text-[17px] font-bold text-gray-900">${escapeHtml(targetThread.sender)}</div>
+                            <div class="text-[14px] text-gray-400">${escapeHtml(targetThread.phone)}</div>
+                        </div>
+                    </div>
+                    <span class="text-[15px] font-semibold text-[#007AFF] bg-blue-50 px-3.5 py-1.5 rounded-full">Send</span>
+                `;
+                listEl.appendChild(row);
+            });
+
+            document.getElementById('forward-modal').classList.remove('hidden');
+        }
+
+        function executeForwardTo(targetThreadId, textToForward) {
+            const targetThread = threads.find(t => t.id === targetThreadId);
+            if (!targetThread) return;
+
+            targetThread.messages.push({
+                id: 'msg_' + Date.now(),
+                text: textToForward,
+                type: 'sent',
+                forwarded: true,
+                dateISO: new Date().toISOString()
+            });
+
+            threads = [targetThread, ...threads.filter(t => t.id !== targetThread.id)];
+            saveData();
+            closeForwardModal();
+
+            if (targetThreadId === activeThreadId) {
+                renderChatMessages();
+                scrollToBottom();
+            }
+            showToast(`Forwarded to ${targetThread.sender}`);
+        }
+
+        function closeForwardModal(e) {
+            if (e) e.stopPropagation();
+            document.getElementById('forward-modal').classList.add('hidden');
+        }
+
+        // ==================== NEW CHAT & RESET MODALS ====================
+        function openNewChatModal() {
+            document.getElementById('new-contact-name').value = '';
+            document.getElementById('new-contact-msg').value = '';
+            document.getElementById('new-chat-modal').classList.remove('hidden');
+        }
+
+        function closeNewChatModal(e) {
+            if (e) e.stopPropagation();
+            document.getElementById('new-chat-modal').classList.add('hidden');
+        }
+
+        function createNewThread() {
+            const name = document.getElementById('new-contact-name').value.trim();
+            const msgText = document.getElementById('new-contact-msg').value.trim();
+
+            if (!name || !msgText) {
+                showToast('Please enter both recipient and message');
+                return;
+            }
+
+            const colors = [
+                'bg-gradient-to-br from-blue-500 to-indigo-600',
+                'bg-gradient-to-br from-emerald-500 to-teal-700',
+                'bg-gradient-to-br from-purple-500 to-pink-600',
+                'bg-gradient-to-br from-amber-500 to-orange-600'
+            ];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            const initials = name.slice(0, 2).toUpperCase();
+
+            const newThread = {
+                id: 'thread_' + Date.now(),
+                sender: name,
+                phone: 'iMessage Contact',
+                avatarText: initials,
+                avatarColor: randomColor,
+                avatarImage: '',
+                unread: false,
+                messages: [
+                    {
+                        id: 'msg_' + Date.now(),
+                        text: msgText,
+                        type: 'sent',
+                        dateISO: new Date().toISOString()
+                    }
+                ]
+            };
+
+            threads.unshift(newThread);
+            saveData();
+            closeNewChatModal();
+            renderInbox();
+            openChat(newThread.id);
+        }
+
+        function openResetModal() {
+            document.getElementById('reset-modal').classList.remove('hidden');
+        }
+
+        function closeResetModal(e) {
+            if (e) e.stopPropagation();
+            document.getElementById('reset-modal').classList.add('hidden');
+        }
+
+        function confirmResetData() {
+            threads = createDefaultThreads();
+            localStorage.removeItem(DELIVERED_INCOMING_KEY);
+            processCodeIncomingMessages();
+            saveData();
+            renderInbox();
+            closeResetModal();
+            showToast('All 10 default messages restored');
+        }
+
+        // ==================== iPHONE CALL SCREEN FUNCTIONS ====================
+        function startCall() {
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return;
+
+            const callAvatar = document.getElementById('call-avatar');
+            callAvatar.className = `w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold shadow-2xl mb-4 overflow-hidden border-2 border-white/20 ${thread.avatarColor}`;
+            callAvatar.innerHTML = getAvatarHtml(thread);
+
+            document.getElementById('call-name').textContent = thread.sender;
+            document.getElementById('call-phone').textContent = thread.phone;
+            const statusEl = document.getElementById('call-status');
+            statusEl.textContent = 'calling...';
+            statusEl.classList.add('animate-pulse');
+
+            document.getElementById('call-screen').classList.remove('hidden');
+
+            let seconds = 0;
+            clearInterval(callTimerInterval);
+            setTimeout(() => {
+                if (document.getElementById('call-screen').classList.contains('hidden')) return;
+                statusEl.classList.remove('animate-pulse');
+                callTimerInterval = setInterval(() => {
+                    seconds++;
+                    const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+                    const secs = String(seconds % 60).padStart(2, '0');
+                    statusEl.textContent = `${mins}:${secs}`;
+                }, 1000);
+            }, 2500);
+        }
+
+        function endCall() {
+            clearInterval(callTimerInterval);
+            document.getElementById('call-screen').classList.add('hidden');
+            showToast('Call ended');
+        }
+
+        function toggleCallBtn(btn) {
+            const circle = btn.querySelector('div');
+            circle.classList.toggle('bg-white');
+            circle.classList.toggle('text-black');
+            circle.classList.toggle('bg-white/15');
+        }
+
+        // ==================== CUSTOM AVATAR / PICTURE MODAL ====================
+        function openAvatarModal() {
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return;
+
+            pendingAvatarDataUrl = thread.avatarImage || '';
+            document.getElementById('avatar-modal-sender').textContent = thread.sender;
+            document.getElementById('avatar-modal-phone').textContent = thread.phone;
+            document.getElementById('avatar-url-input').value = thread.avatarImage && !thread.avatarImage.startsWith('data:') ? thread.avatarImage : '';
+            document.getElementById('avatar-file-input').value = '';
+            document.getElementById('avatar-modal').classList.remove('hidden');
+        }
+
+        function closeAvatarModal(e) {
+            if (e) e.stopPropagation();
+            document.getElementById('avatar-modal').classList.add('hidden');
+        }
+
+        function handleAvatarFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                pendingAvatarDataUrl = e.target.result;
+                document.getElementById('avatar-url-input').value = '';
+                showToast('Photo selected â tap "Save Changes"');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveAvatarImage() {
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return;
+
+            const urlVal = document.getElementById('avatar-url-input').value.trim();
+            if (urlVal) {
+                thread.avatarImage = urlVal;
+            } else if (pendingAvatarDataUrl) {
+                thread.avatarImage = pendingAvatarDataUrl;
+            }
+
+            saveData();
+            renderInbox();
+            openChat(thread.id);
+            closeAvatarModal();
+            showToast('Profile photo updated!');
+        }
+
+        function removeCustomAvatar() {
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return;
+
+            thread.avatarImage = '';
+            pendingAvatarDataUrl = '';
+            saveData();
+            renderInbox();
+            openChat(thread.id);
+            closeAvatarModal();
+            showToast('Default icon restored');
+        }
+
+        // ==================== UTILITIES ====================
+        let toastTimeout = null;
+        function showToast(message) {
+            const toast = document.getElementById('ios-toast');
+            toast.textContent = message;
+            toast.classList.remove('hidden');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 2400);
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // ==================== STARTUP ====================
+        window.onload = function() {
+            loadData();
+            processCodeIncomingMessages();
+            renderInbox();
+            initSwipeLeftTimestamps();
+            startMidnightRolloverWatcher();
+        };
+    </script>
+</body>
+</html>
